@@ -1,0 +1,31 @@
+5G System Architecture (operator-created notes; not copied from 3GPP)
+
+Purpose
+- A quick, vendor-agnostic summary of common 5G Core (5GC) concepts used in troubleshooting.
+- This file is intentionally written from scratch to avoid copying 3GPP specification text.
+
+High-level structure
+- The 5G System is typically discussed as:
+  - Access Network (AN): e.g., gNB / RAN
+  - Core Network (5GC): service-based control plane + user plane
+  - Data Network (DN): external networks/services reached via UPF
+
+Common 5GC Network Functions (NFs)
+- AMF: registration, connection management, mobility management (NAS termination)
+- SMF: PDU session control, selects UPF, allocates session resources
+- UPF: user-plane forwarding, QoS enforcement, packet detection rules
+- NRF: NF discovery/registration (who provides which services)
+- PCF: policy control (QoS, charging rules, access policies)
+- UDM/AUSF: subscription + authentication support
+- NSSF: slice selection assistance
+
+Interfaces / reference points (common shorthand)
+- N1: UE <-> AMF (NAS)
+- N2: AN <-> AMF (NGAP)
+- N3: AN <-> UPF (GTP-U)
+- N4: SMF <-> UPF (PFCP)
+- N6: UPF <-> DN
+
+Troubleshooting reminders
+- Many “registration problems” are really: reachability + config alignment (TAC/PLMN/slices) + auth/subscription.
+- For session problems: focus on SMF decisions (UPF selection, DNN/S-NSSAI, policies) and PFCP state on UPF.
