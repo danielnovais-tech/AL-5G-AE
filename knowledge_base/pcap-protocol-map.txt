@@ -1,0 +1,28 @@
+PCAP Protocol Map (AL-5G-AE)
+
+This table is designed to be indexed by RAG. It documents typical ports, recommended tshark display filters (-Y), key fields AL-5G-AE extracts, and the JSON paths used when parsing tshark -T ek (NDJSON) output.
+
+Protocol | Tag Prefix | Typical Port(s) | Suggested -Y filter | Key fields (fields mode) | JSON path in EK output (layers.X.Y)
+-------- | ---------- | --------------- | ------------------- | ------------------------ | -----------------------------------
+PFCP     | [PFCP]     | UDP/8805        | pfcp || udp.port==8805 | pfcp.msg_type, pfcp.seid, pfcp.node_id, pfcp.cause | layers.pfcp.pfcp.seid, layers.pfcp.pfcp.msg_type
+GTPv2-C  | [GTPv2-C]  | UDP/2123        | gtpv2 || udp.port==2123 | gtpv2.message_type, gtpv2.teid, gtpv2.cause | layers.gtpv2.gtpv2.message_type, layers.gtpv2.gtpv2.teid
+GTP-U    | [GTP-U]    | UDP/2152        | (udp.port==2152 && gtp) || gtp | gtp.teid, gtp.message_type | layers.gtp.gtp.teid, layers.gtp.gtp.message_type
+NGAP     | [NGAP]     | SCTP (often 38412) | ngap || (sctp && ngap) | ngap.procedureCode, ngap.pdu, ngap.messageType | layers.ngap.ngap.procedureCode
+HTTP/2   | [HTTP2]    | TCP/443, TCP/80 | http2 || (tcp && http2) | http2.streamid, http2.type, http2.method, http2.headers.path, http2.headers.status, http2.data | layers.http2.http2.method, layers.http2.http2.headers.path, layers.http2.http2.headers.status
+
+Notes:
+- SBI is typically HTTP/2 (often over TLS). Without TLS keys, you may only see metadata.
+- Field names can vary slightly by Wireshark/tshark version; extraction is best-effort.
+- HTTP/2 payload (http2.data) is hex-encoded in EK output; AL-5G-AE decodes it to UTF-8 text automatically.
+
+Deterministic extraction modes:
+- tshark -T ek: NDJSON output (one JSON object per packet). Best for full per-packet detail.
+  Example: tshark -r capture.pcap -Y "pfcp" -T ek -V
+- tshark -T fields: columnar TSV. Best for extracting a known set of fields.
+  Example: tshark -r capture.pcap -Y "pfcp" -T fields -E header=n -E separator=\t -e frame.time_epoch -e ip.src -e ip.dst -e pfcp.msg_type -e pfcp.seid
+
+Examples:
+- PFCP only:
+  python al_5g_ae.py --rag-dir knowledge_base --pcap-file capture.pcapng --pcap-filter "pfcp || udp.port==8805"
+- Mixed control-plane:
+  python al_5g_ae.py --rag-dir knowledge_base --pcap-file capture.pcapng --pcap-filter "pfcp || gtpv2 || ngap || http2"

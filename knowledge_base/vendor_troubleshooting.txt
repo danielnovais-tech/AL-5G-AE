@@ -1,0 +1,30 @@
+Vendor-agnostic troubleshooting notes (operator-created)
+
+AMF: registration rejects (common patterns)
+- “No suitable cell / tracking area not allowed” style rejects:
+  - Validate TAC list alignment (UE location vs AMF served TAIs)
+  - Validate PLMN and slicing configuration (S-NSSAI allowed lists)
+- “Illegal UE / IMSI unknown / subscription” style rejects:
+  - Check UDM subscription provisioned and reachable
+  - Check AUSF/UDM auth result paths; look for HTTP 4xx/5xx on SBI
+- Overload / throttling:
+  - Look for spikes in registration attempts (storms)
+  - Confirm rate-limits, retry timers, and load-balancer behavior
+
+Log analysis approach
+- Search for the first ERROR/WARN that correlates with a reject/abort.
+- Correlate by identifiers:
+  - SUPI/SUCI, GUTI, 5G-TMSI
+  - gNB ID / N2 SCTP association
+  - PDU Session ID (PSI), SEID/TEID
+
+Packet/trace hints
+- N2 (AMF<->gNB): NGAP over SCTP
+- N4 (SMF<->UPF): PFCP
+- N3 (gNB<->UPF): GTP-U
+- SBI: HTTP/2 with JSON bodies
+
+Quick checks
+- Time sync (NTP) across NFs
+- DNS and service discovery (NRF / K8s services)
+- MTU and fragmentation issues on GTP-U paths

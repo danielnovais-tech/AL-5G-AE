@@ -1,0 +1,19 @@
+# Core
+transformers>=4.35.0
+torch>=2.0.0
+accelerate>=0.20.0
+
+# RAG
+sentence-transformers>=2.2.0
+faiss-cpu>=1.7.4
+numpy>=1.24.0
+nltk>=3.8.1
+
+# Web UI
+gradio>=4.0.0
+
+# REST API + PCAP ingestion
+fastapi>=0.110.0
+uvicorn>=0.24.0
+python-multipart>=0.0.9
+scapy>=2.5.0

@@ -1,0 +1,26 @@
+5G Procedures (operator-created notes; not copied from 3GPP)
+
+Registration (high-level flow)
+1) UE -> AMF: Registration Request (via gNB / AN)
+2) AMF: authentication + security setup (AUSF/UDM involved depending on deployment)
+3) AMF: retrieves subscription / policy inputs, validates access
+4) AMF: finalizes registration state and responds
+5) UE <- AMF: Registration Accept
+
+Where failures show up (practical)
+- UE rejects / attach failures: check NAS cause codes and timer behavior.
+- AMF rejects: check PLMN/TAC/slice/DNN consistency and subscription/auth outcomes.
+- gNB-related: NGAP errors, SCTP connectivity, AMF selection.
+
+PDU Session Establishment (high-level)
+1) UE requests a PDU session (DNN, S-NSSAI, SSC mode, etc.)
+2) AMF forwards to SMF selection; SMF becomes session anchor
+3) SMF selects UPF and installs PFCP rules (PDR/FAR/QER)
+4) N3/N6 routing becomes active once UPF rules + tunnel endpoints are aligned
+
+Common failure points
+- DNN not allowed / not found
+- Slice not authorized
+- UPF selection mismatch (region, topology, or capacity)
+- PFCP association issues or rule install failures
+- GTP-U tunnel endpoint mismatch (TEID/IP)
