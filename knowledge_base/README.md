@@ -6,9 +6,10 @@ This folder ships with a small, **operator-created** starter pack so RAG works o
 
 ## Suggested content
 
-- 3GPP specifications (e.g., TS 23.501, TS 23.502) — download from the 3GPP portal and save as `.txt` *if you have the right to use/share them*.
-- Vendor troubleshooting guides (Nokia, Ericsson, Huawei, etc.) — extract relevant sections you are permitted to store.
-- Internal runbooks, postmortems, known-issues databases, alarms dictionaries.
+
+## Included helper references
+- `pcap-protocol-map.txt`: Ports, recommended `tshark -Y` filters, and key fields for PFCP/GTP/NGAP/HTTP2 PCAP extraction (indexed by RAG).
+- `pcap-protocol-map.md`: Same content as a Markdown table (human-friendly view).
 
 ## Included examples (written from scratch)
 

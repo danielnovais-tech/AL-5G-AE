@@ -14,7 +14,7 @@ WORKDIR /app
 
 # System deps (minimal). Add build-essential only if your env needs compilation.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git ca-certificates \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git ca-certificates tshark \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt

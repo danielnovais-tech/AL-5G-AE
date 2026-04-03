@@ -1,0 +1,3 @@
+# System packages for Hugging Face Spaces (apt)
+# Optional: enables deeper PCAP decoding via tshark (auto-detected by AL-5G-AE).
+tshark

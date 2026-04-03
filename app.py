@@ -12,7 +12,7 @@ Environment variables (optional):
 
 import os
 
-from al_5g_ae import DEFAULT_MODEL
+from al_5g_ae_core import DEFAULT_MODEL
 from web_ui import create_ui
 
 
