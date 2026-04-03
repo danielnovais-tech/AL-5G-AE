@@ -16,10 +16,12 @@ from al_5g_ae_core import DEFAULT_MODEL
 from web_ui import create_ui
 
 
-MODEL_NAME = os.environ.get("AL5GAE_MODEL", DEFAULT_MODEL)
+MODEL_NAME = os.environ.get("AL5GAE_MODEL") or os.environ.get("DEFAULT_MODEL") or DEFAULT_MODEL
 DEVICE = os.environ.get("AL5GAE_DEVICE", "cpu")
 RAG_DIR = os.environ.get("AL5GAE_RAG_DIR", "knowledge_base")
 RUN_LOG = os.environ.get("AL5GAE_RUN_LOG", "")
+
+print(f"AL-5G-AE Spaces: model={MODEL_NAME}, device={DEVICE}, rag_dir={RAG_DIR}")
 
 
 # Gradio Spaces expects this global name.

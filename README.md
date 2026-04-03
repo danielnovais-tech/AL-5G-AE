@@ -19,6 +19,10 @@ AL-5G-AE combines a lightweight language model (Phi-2 or TinyLlama) with RAG, PC
 | **Model fallback** | `microsoft/phi-2` (2.7B) by default; falls back to `TinyLlama-1.1B-Chat` if needed |
 | **Logging** | All queries and responses logged to `logs/al_5g_ae.log` |
 | **Docker & HF Spaces** | Ready for containerised deployment or one-click Spaces launch |
+| **Real-time streaming** | WebSocket server (+ optional Kafka consumer) indexes live logs into RAG |
+| **Slack bot** | `/al5gae` slash command and `@mention` handler via Socket Mode |
+| **TCP stream reassembly** | Reconstruct full TCP payloads (e.g., SBI HTTP/2 flows) from PCAPs |
+| **LoRA fine-tuning** | Domain-adapt Phi-2 or TinyLlama on your own 5G Q&A pairs |
 
 ## Installation
 
@@ -32,9 +36,13 @@ Install `tshark` (Wireshark CLI) for deep PCAP dissection:
 
 - Ubuntu: `sudo apt install tshark`
 - macOS: `brew install wireshark`
-- Windows: install Wireshark and add to PATH
+- Windows: install [Wireshark](https://www.wireshark.org/download.html), then add `tshark.exe` to your PATH:
+  1. Find the Wireshark install folder (typically `C:\Program Files\Wireshark`)
+  2. Open **Settings → System → Environment Variables → Path → Edit** and add that folder
+  3. Restart your terminal
 
-Verify: `python -c "import shutil; print(shutil.which('tshark'))"`
+Verify: `python -c "import shutil; print(shutil.which('tshark'))"`  
+If it prints `None`, `tshark` is not on PATH — PCAP ingestion will fall back to Scapy (still works, just less detail).
 
 ## Quick Start
 
@@ -233,6 +241,176 @@ Entry file: `app.py`. Environment variables:
 
 `packages.txt` installs `tshark` automatically in Spaces.
 
+### Manual deploy
+
+1. Go to [huggingface.co/new-space](https://huggingface.co/new-space)
+2. Choose **Gradio** SDK
+3. Upload this repository (or connect your GitHub repo)
+4. Set environment variables if needed (see table above)
+
+### Automated deploy
+
+```bash
+pip install huggingface_hub
+huggingface-cli login             # or set HF_TOKEN env var
+python deploy_spaces.py            # uses your logged-in HF account
+python deploy_spaces.py --owner your-org --space-name al-5g-ae  # custom
+python deploy_spaces.py --private  # private Space
+```
+
+## GitHub Releases
+
+```bash
+pip install PyGithub
+
+# Linux/macOS:
+export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+
+# Windows PowerShell:
+# $env:GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxx"
+
+# Preview changelog
+python create_release.py --dry-run
+
+# Create v1.0.0 release
+python create_release.py
+
+# Create a draft release with a different tag
+python create_release.py --tag v1.1.0 --draft
+```
+
+## Real-time Log Streaming
+
+Index live 5G core logs into RAG as they arrive — via WebSocket or Kafka.
+
+### WebSocket server
+
+```bash
+python stream_ingest.py websocket --rag-dir knowledge_base --port 8765
+```
+
+Send log lines from any client:
+
+```python
+import asyncio, json, websockets
+
+async def send():
+    async with websockets.connect("ws://localhost:8765") as ws:
+        await ws.send(json.dumps({"log_line": "2026-04-02T10:00:00 AMF ERROR registration reject cause #15"}))
+        print(await ws.recv())
+
+asyncio.run(send())
+```
+
+### Kafka consumer (optional)
+
+```bash
+pip install kafka-python
+python stream_ingest.py kafka --rag-dir knowledge_base --bootstrap-servers localhost:9092 --topic al5gae-logs
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--rag-dir` | — | Knowledge-base directory |
+| `--buffer-size` | `100` | Lines to buffer before indexing |
+| `--host` | `0.0.0.0` | WebSocket bind address |
+| `--port` | `8765` | WebSocket port |
+
+## Slack Bot
+
+Query AL-5G-AE from Slack via `/al5gae` slash commands or `@mentions`.
+
+### Setup
+
+1. Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps)
+2. Enable **Socket Mode** and create an App-Level Token (`xapp-...`)
+3. Add the `/al5gae` slash command
+4. Install the app to your workspace and copy the Bot Token (`xoxb-...`)
+5. Set environment variables:
+
+```powershell
+# PowerShell
+$env:SLACK_BOT_TOKEN = "xoxb-..."
+$env:SLACK_APP_TOKEN = "xapp-..."
+$env:RAG_DIR = "./knowledge_base"      # optional
+$env:AL5GAE_MODEL = "microsoft/phi-2"  # optional
+```
+
+```bash
+# Bash
+export SLACK_BOT_TOKEN=xoxb-...
+export SLACK_APP_TOKEN=xapp-...
+```
+
+6. Run:
+
+```bash
+python slack_bot.py
+```
+
+Then in Slack: `/al5gae What causes AMF registration reject cause #15?`
+
+## TCP Stream Reassembly
+
+Reconstruct full TCP sessions from a PCAP — useful for SBI (HTTP/2) flow analysis.
+
+```bash
+# Print reassembled streams to stdout
+python pcap_stream_reassembly.py capture.pcapng
+
+# Save to file
+python pcap_stream_reassembly.py capture.pcapng --output streams.txt
+
+# Index into RAG
+python pcap_stream_reassembly.py capture.pcapng --rag-index --rag-dir knowledge_base
+```
+
+Streams are tagged with protocol heuristics (`[HTTP2/SBI]`, `[PFCP]`, `[GTPv2-C]`, `[TCP]`).
+
+## Fine-tuning (LoRA)
+
+Domain-adapt Phi-2 or TinyLlama on your own 5G Q&A dataset.
+
+### Dataset format (JSONL)
+
+```json
+{"instruction": "What is PFCP?", "output": "PFCP (Packet Forwarding Control Protocol) is used on the N4 interface between SMF and UPF..."}
+{"instruction": "Explain AMF registration reject cause #15", "output": "Cause #15 means no suitable cells in the tracking area..."}
+```
+
+### Train
+
+```bash
+pip install peft datasets bitsandbytes
+
+python finetune.py --dataset data/5g_qa.jsonl --model microsoft/phi-2 --output-dir ./lora_adapter \
+  --epochs 3 --batch-size 4 --lr 2e-4 --lora-r 8 --lora-alpha 32
+```
+
+### Use the adapter
+
+```python
+from peft import PeftModel
+from transformers import AutoModelForCausalLM
+
+base = AutoModelForCausalLM.from_pretrained("microsoft/phi-2")
+model = PeftModel.from_pretrained(base, "./lora_adapter")
+```
+
+Or set `--model ./lora_adapter` when running the CLI/web UI.
+
+| Flag | Default | Description |
+|---|---|---|
+| `--dataset` | (required) | JSONL file with `instruction` / `output` |
+| `--model` | `microsoft/phi-2` | Base model |
+| `--output-dir` | `./lora_adapter` | Where to save the adapter |
+| `--epochs` | `3` | Training epochs |
+| `--batch-size` | `4` | Per-device batch size |
+| `--lr` | `2e-4` | Learning rate |
+| `--lora-r` | `8` | LoRA rank |
+| `--lora-alpha` | `32` | LoRA alpha |
+| `--fp16` / `--no-fp16` | `--fp16` | Half-precision training |
+
 ## Known Issues & Workarounds
 
 | Issue | Solution |
@@ -254,7 +432,11 @@ All modules pass `py_compile`. The web UI launches without errors, PCAP ingestio
 
 ## Roadmap
 
-- Deploy to Hugging Face Spaces
-- Real-time monitoring (Kafka/REST streams from 5G core)
-- Fine-tune the SLM (LoRA on domain Q&A pairs)
-- Slack / Teams bot integration
+- [x] Deploy to Hugging Face Spaces (automated via `deploy_spaces.py`)
+- [x] GitHub release v1.0.0 (automated via `create_release.py`)
+- [x] Real-time log streaming (WebSocket + Kafka via `stream_ingest.py`)
+- [x] Fine-tune the SLM (LoRA via `finetune.py`)
+- [x] Slack bot integration (`slack_bot.py`)
+- [x] TCP stream reassembly (`pcap_stream_reassembly.py`)
+- [ ] Microsoft Teams bot integration
+- [ ] Prometheus / Grafana alerting bridge

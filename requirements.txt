@@ -17,3 +17,15 @@ fastapi>=0.110.0
 uvicorn>=0.24.0
 python-multipart>=0.0.9
 scapy>=2.5.0
+
+# Real-time streaming (optional)
+websockets>=12.0
+# kafka-python>=2.0.2  # uncomment if using Kafka consumer
+
+# Slack bot (optional)
+slack-bolt>=1.18.0
+
+# Fine-tuning (optional – only needed for finetune.py)
+peft>=0.7.0
+datasets>=2.14.0
+# bitsandbytes>=0.41.0  # uncomment for 4-bit/8-bit quantised training
