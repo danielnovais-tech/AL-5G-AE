@@ -15,8 +15,8 @@ spec:
   selector:
     {{- include "al-5g-ae.selectorLabels" . | nindent 4 }}
 {{- end }}
----
 {{- if .Values.components.webui }}
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -33,8 +33,8 @@ spec:
   selector:
     {{- include "al-5g-ae.selectorLabels" . | nindent 4 }}
 {{- end }}
----
 {{- if .Values.components.teamsBot }}
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -51,8 +51,8 @@ spec:
   selector:
     {{- include "al-5g-ae.selectorLabels" . | nindent 4 }}
 {{- end }}
----
 {{- if .Values.components.prometheusBridge }}
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -69,8 +69,8 @@ spec:
   selector:
     {{- include "al-5g-ae.selectorLabels" . | nindent 4 }}
 {{- end }}
----
 {{- if .Values.components.streamIngest }}
+---
 apiVersion: v1
 kind: Service
 metadata:

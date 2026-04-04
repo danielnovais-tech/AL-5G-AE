@@ -167,7 +167,7 @@ affinity: {}
 # ── Monitoring ───────────────────────────────────────────────────────────
 serviceMonitor:
   enabled: false
-  interval: 30s
+  interval: "30s"
   labels: {}
 
 # ── OTEL collector endpoint ──────────────────────────────────────────────
