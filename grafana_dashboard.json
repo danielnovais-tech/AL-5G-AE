@@ -1,0 +1,185 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "title": "Query Rate (per interface)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(al5gae_queries_total[5m])",
+          "legendFormat": "{{ interface }}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Query Latency p50 / p95 / p99",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "s" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(al5gae_query_duration_seconds_bucket[5m]))",
+          "legendFormat": "p50 {{ interface }}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(al5gae_query_duration_seconds_bucket[5m]))",
+          "legendFormat": "p95 {{ interface }}",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(al5gae_query_duration_seconds_bucket[5m]))",
+          "legendFormat": "p99 {{ interface }}",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "title": "RAG Retrievals / sec",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(al5gae_rag_retrievals_total[5m])",
+          "legendFormat": "{{ interface }}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Error Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "color": { "mode": "palette-classic" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(al5gae_errors_total[5m])",
+          "legendFormat": "{{ interface }}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Alertmanager Alerts Processed",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(al5gae_alerts_processed_total[5m])",
+          "legendFormat": "{{ alertname }}",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(al5gae_alerts_failed_total[5m])",
+          "legendFormat": "FAILED {{ alertname }}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "title": "Total Queries (counter)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "expr": "sum(al5gae_queries_total)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Total RAG Hits",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "expr": "sum(al5gae_rag_retrievals_total)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Total Errors",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(al5gae_errors_total)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Model Throughput (queries/min)",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "expr": "sum(rate(al5gae_queries_total[1m])) * 60",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["al-5g-ae", "5g", "observability"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "AL-5G-AE Observability",
+  "uid": "al5gae-observability",
+  "version": 1
+}

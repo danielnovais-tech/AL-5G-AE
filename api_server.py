@@ -33,8 +33,25 @@ from al_5g_ae_core import (
     setup_run_logger,
 )
 from pcap_ingest import process_pcap, summaries_to_text
+from observability import (
+    get_tracer,
+    QueryTimer,
+    record_rag_retrieval,
+)
+
+# --- OTEL auto-instrumentation for FastAPI (if available) ---
+try:
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor  # type: ignore[import-untyped]
+    _otel_fastapi = True
+except ImportError:
+    _otel_fastapi = False
 
 app = FastAPI(title="AL-5G-AE API", version="0.1")
+
+if _otel_fastapi:
+    FastAPIInstrumentor.instrument_app(app)  # type: ignore[arg-type]
+
+_tracer = get_tracer("api_server")
 
 _state_lock = asyncio.Lock()
 _tokenizer: Any = None
@@ -94,22 +111,25 @@ class QueryRequest(BaseModel):
 async def query(req: QueryRequest) -> Dict[str, object]:
     await _ensure_backend_loaded(model_name=req.model, device=req.device, rag_dir=req.rag_dir)
 
-    context = None
-    if _rag is not None:
-        context = await run_in_threadpool(_rag.retrieve, req.question, int(req.top_k))
+    with QueryTimer("api", _tracer, "api_query"):
+        context = None
+        if _rag is not None:
+            context = await run_in_threadpool(_rag.retrieve, req.question, int(req.top_k))
+            if context:
+                record_rag_retrieval("api")
 
-    if _logger:
-        _logger.info("api_query=%r retrieved=%d", req.question, len(context or []))
+        if _logger:
+            _logger.info("api_query=%r retrieved=%d", req.question, len(context or []))
 
-    answer = await run_in_threadpool(
-        generate_response,
-        _tokenizer,
-        _model,
-        req.question,
-        context,
-        int(req.max_tokens),
-        float(req.temperature),
-    )
+        answer = await run_in_threadpool(
+            generate_response,
+            _tokenizer,
+            _model,
+            req.question,
+            context,
+            int(req.max_tokens),
+            float(req.temperature),
+        )
 
     return {"answer": answer, "retrieved": len(context or [])}
 
