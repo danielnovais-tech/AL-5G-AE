@@ -52,6 +52,9 @@ AL-5G-AE combines a lightweight language model (Phi-2 or TinyLlama) with RAG, PC
 | **Dark mode** | Toggle light/dark theme in the web UI; persisted via `localStorage`, respects `prefers-color-scheme` |
 | **Mobile-responsive UI** | Adaptive layout with touch-friendly tap targets, iOS zoom prevention, and optimised chat height |
 | **Voice input** | Browser-based speech recognition (Web Speech API) for hands-free queries — click the microphone button |
+| **API key authentication** | Optional `X-API-Key` header auth with constant-time comparison; keys via `AL5GAE_API_KEYS` env or `--api-keys` CLI flag |
+| **Rate limiting** | Per-IP rate limiting via slowapi (default 60/min); configurable via `AL5GAE_RATE_LIMIT` env or `--rate-limit` CLI |
+| **Kubernetes Helm chart** | Production-ready Helm chart with per-component toggles, secrets management, HPA, Ingress, ServiceMonitor, PVC for model cache |
 
 ## Installation
 
@@ -1125,6 +1128,140 @@ A floating microphone button (bottom-right) activates the browser's built-in spe
 python web_ui.py --rag-dir knowledge_base
 ```
 
+---
+
+## API Authentication & Rate Limiting
+
+The REST API supports optional API key authentication and per-IP rate limiting.
+
+### Setup
+
+```bash
+# Generate a random API key
+python api_server.py --generate-key
+
+# Start with auth enabled
+export AL5GAE_API_KEYS="key1,key2,key3"
+python api_server.py --rag-dir knowledge_base
+
+# Or pass keys directly
+python api_server.py --api-keys "my-secret-key" --rag-dir knowledge_base
+```
+
+### Calling the API
+
+```bash
+# With auth enabled — include X-API-Key header
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: my-secret-key" \
+  -d '{"question": "Why is PFCP session establishment failing?"}'
+
+# Health endpoint — no auth required
+curl http://localhost:8000/health
+```
+
+### Rate Limiting
+
+| Variable | Default | Description |
+|---|---|---|
+| `AL5GAE_RATE_LIMIT` | `60/minute` | Rate limit string (slowapi format) |
+| `AL5GAE_RATE_LIMIT_STORAGE` | `memory://` | Storage backend (`redis://host:6379` for distributed) |
+
+```bash
+# Custom rate limit
+python api_server.py --rate-limit "30/minute" --rag-dir knowledge_base
+```
+
+Install `slowapi` for rate limiting: `pip install slowapi`. Without it, rate limiting is silently disabled.
+
+### Environment Variables
+
+| Variable | Description |
+|---|---|
+| `AL5GAE_API_KEYS` | Comma-separated valid API keys |
+| `AL5GAE_RATE_LIMIT` | Rate limit (e.g. `60/minute`, `10/second`) |
+| `AL5GAE_RATE_LIMIT_STORAGE` | Backend URI for rate limit counters |
+
+---
+
+## Kubernetes Deployment (Helm)
+
+A production-ready Helm chart is provided in `helm/al-5g-ae/`.
+
+### Quick Start
+
+```bash
+# Install with defaults (API + Web UI)
+helm install al5gae ./helm/al-5g-ae
+
+# With custom values
+helm install al5gae ./helm/al-5g-ae \
+  --set auth.enabled=true \
+  --set auth.apiKeys="my-secret-key" \
+  --set components.slackBot=true \
+  --set slack.botToken="xoxb-..." \
+  --set slack.appToken="xapp-..."
+
+# With ingress
+helm install al5gae ./helm/al-5g-ae \
+  --set ingress.enabled=true \
+  --set ingress.className=nginx \
+  --set ingress.hosts[0].host=al5gae.example.com
+```
+
+### Components
+
+Each component can be toggled independently:
+
+```yaml
+components:
+  api: true               # REST API server (port 8000)
+  webui: true             # Gradio web UI (port 7860)
+  slackBot: false         # Slack bot (Socket Mode)
+  teamsBot: false         # Teams bot (port 3978)
+  prometheusBridge: false # Alertmanager webhook (port 9090)
+  streamIngest: false     # WebSocket log streaming (port 8765)
+```
+
+### Secrets Management
+
+For production, use `existingSecret` to reference pre-created Kubernetes secrets:
+
+```yaml
+auth:
+  enabled: true
+  existingSecret: my-api-keys-secret    # must contain key "api-keys"
+
+slack:
+  existingSecret: my-slack-secret       # must contain "bot-token" and "app-token"
+
+teams:
+  existingSecret: my-teams-secret       # must contain "app-id" and "app-password"
+```
+
+### Features
+
+- **HPA** — Horizontal Pod Autoscaler (CPU/memory-based) via `autoscaling.enabled=true`
+- **PVC** — Persistent volume for model cache and knowledge base (20Gi default)
+- **Ingress** — Path-based routing: `/api` → API, `/` → Web UI
+- **ServiceMonitor** — Prometheus Operator auto-discovery via `serviceMonitor.enabled=true`
+- **Security** — Non-root containers, dropped capabilities, read-only FS option
+- **OTEL** — Collector endpoint via `otel.enabled=true` + `otel.endpoint`
+
+### Helm Values Reference
+
+| Key | Default | Description |
+|---|---|---|
+| `replicaCount` | `1` | Pod replicas (overridden by HPA if enabled) |
+| `image.repository` | `ghcr.io/danielnovais-tech/al-5g-ae` | Container image |
+| `image.tag` | `latest` | Image tag |
+| `config.model` | `microsoft/phi-2` | Model name or GGUF path |
+| `config.device` | `cpu` | `cpu` or `cuda` |
+| `persistence.size` | `20Gi` | PVC size for model cache |
+| `resources.requests.memory` | `2Gi` | Memory request |
+| `resources.limits.memory` | `8Gi` | Memory limit |
+
 ## Known Issues & Workarounds
 
 | Issue | Solution |
@@ -1180,3 +1317,6 @@ All modules pass `py_compile`. The web UI launches without errors, PCAP ingestio
 - [x] Dark mode — toggle light/dark theme in web UI with `localStorage` persistence
 - [x] Mobile-responsive interface — adaptive CSS breakpoints, touch-friendly targets
 - [x] Voice input — browser speech recognition (Web Speech API) for hands-free queries
+- [x] API key authentication — `X-API-Key` header with constant-time comparison (`api_server.py`)
+- [x] Rate limiting — per-IP via slowapi, configurable rate and storage backend
+- [x] Kubernetes Helm chart — production-ready deployment with per-component toggles, HPA, Ingress, ServiceMonitor (`helm/al-5g-ae/`)

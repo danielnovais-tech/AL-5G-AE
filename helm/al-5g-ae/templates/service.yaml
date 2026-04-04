@@ -1,0 +1,89 @@
+{{- if .Values.components.api }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "al-5g-ae.fullname" . }}-api
+  labels:
+    {{- include "al-5g-ae.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.api.service.type }}
+  ports:
+    - port: {{ .Values.api.service.port }}
+      targetPort: api
+      protocol: TCP
+      name: api
+  selector:
+    {{- include "al-5g-ae.selectorLabels" . | nindent 4 }}
+{{- end }}
+---
+{{- if .Values.components.webui }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "al-5g-ae.fullname" . }}-webui
+  labels:
+    {{- include "al-5g-ae.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.webui.service.type }}
+  ports:
+    - port: {{ .Values.webui.service.port }}
+      targetPort: webui
+      protocol: TCP
+      name: webui
+  selector:
+    {{- include "al-5g-ae.selectorLabels" . | nindent 4 }}
+{{- end }}
+---
+{{- if .Values.components.teamsBot }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "al-5g-ae.fullname" . }}-teams
+  labels:
+    {{- include "al-5g-ae.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.teams.service.type }}
+  ports:
+    - port: {{ .Values.teams.service.port }}
+      targetPort: teams
+      protocol: TCP
+      name: teams
+  selector:
+    {{- include "al-5g-ae.selectorLabels" . | nindent 4 }}
+{{- end }}
+---
+{{- if .Values.components.prometheusBridge }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "al-5g-ae.fullname" . }}-prometheus
+  labels:
+    {{- include "al-5g-ae.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.prometheusBridge.service.type }}
+  ports:
+    - port: {{ .Values.prometheusBridge.service.port }}
+      targetPort: prom-bridge
+      protocol: TCP
+      name: prometheus
+  selector:
+    {{- include "al-5g-ae.selectorLabels" . | nindent 4 }}
+{{- end }}
+---
+{{- if .Values.components.streamIngest }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "al-5g-ae.fullname" . }}-websocket
+  labels:
+    {{- include "al-5g-ae.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.streamIngest.service.type }}
+  ports:
+    - port: {{ .Values.streamIngest.service.port }}
+      targetPort: ws
+      protocol: TCP
+      name: websocket
+  selector:
+    {{- include "al-5g-ae.selectorLabels" . | nindent 4 }}
+{{- end }}

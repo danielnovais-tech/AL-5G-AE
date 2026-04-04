@@ -1,0 +1,176 @@
+# Default values for al-5g-ae Helm chart.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/danielnovais-tech/al-5g-ae
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# ── Core configuration ───────────────────────────────────────────────────
+config:
+  model: "microsoft/phi-2"
+  device: "cpu"
+  ragDir: "/app/knowledge_base"
+  logFormat: "json"         # "json" for ELK/Loki, "plain" for human-readable
+
+# ── API authentication & rate limiting ───────────────────────────────────
+auth:
+  enabled: false
+  # API keys (comma-separated). Use existingSecret for production.
+  apiKeys: ""
+  existingSecret: ""        # Secret name containing key "api-keys"
+
+rateLimit:
+  enabled: true
+  limit: "60/minute"
+  storage: "memory://"      # Use "redis://redis:6379" for distributed
+
+# ── Services ─────────────────────────────────────────────────────────────
+# Enable/disable individual components
+components:
+  api: true
+  webui: true
+  slackBot: false
+  teamsBot: false
+  prometheusBridge: false
+  streamIngest: false
+
+# ── API server ───────────────────────────────────────────────────────────
+api:
+  port: 8000
+  service:
+    type: ClusterIP
+    port: 8000
+
+# ── Web UI ───────────────────────────────────────────────────────────────
+webui:
+  port: 7860
+  service:
+    type: ClusterIP
+    port: 7860
+
+# ── Slack bot ────────────────────────────────────────────────────────────
+slack:
+  botToken: ""
+  appToken: ""
+  existingSecret: ""        # Secret with keys "bot-token" and "app-token"
+
+# ── Teams bot ────────────────────────────────────────────────────────────
+teams:
+  appId: ""
+  appPassword: ""
+  port: 3978
+  existingSecret: ""        # Secret with keys "app-id" and "app-password"
+  service:
+    type: ClusterIP
+    port: 3978
+
+# ── Prometheus bridge ────────────────────────────────────────────────────
+prometheusBridge:
+  port: 9090
+  forwardWebhookUrl: ""
+  service:
+    type: ClusterIP
+    port: 9090
+
+# ── WebSocket streaming ─────────────────────────────────────────────────
+streamIngest:
+  port: 8765
+  service:
+    type: ClusterIP
+    port: 8765
+
+# ── Ingress ──────────────────────────────────────────────────────────────
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # cert-manager.io/cluster-issuer: letsencrypt
+  hosts:
+    - host: al-5g-ae.local
+      paths:
+        - path: /api
+          pathType: Prefix
+          service: api
+        - path: /
+          pathType: Prefix
+          service: webui
+  tls: []
+  #  - secretName: al-5g-ae-tls
+  #    hosts:
+  #      - al-5g-ae.local
+
+# ── Resources ────────────────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
+    cpu: "2"
+    memory: 8Gi
+
+# GPU support (uncomment for NVIDIA GPU inference)
+# gpu:
+#   enabled: false
+#   count: 1
+
+# ── Persistence (model cache + knowledge base) ──────────────────────────
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 20Gi
+  mountPath: /data
+
+# ── Autoscaling ──────────────────────────────────────────────────────────
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 85
+
+# ── Pod configuration ────────────────────────────────────────────────────
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9090"
+  prometheus.io/path: "/metrics"
+
+podSecurityContext:
+  runAsNonRoot: true
+  fsGroup: 1000
+
+securityContext:
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# ── Monitoring ───────────────────────────────────────────────────────────
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  labels: {}
+
+# ── OTEL collector endpoint ──────────────────────────────────────────────
+otel:
+  enabled: false
+  endpoint: "http://otel-collector:4317"

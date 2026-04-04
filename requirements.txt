@@ -33,6 +33,9 @@ botbuilder-integration-aiohttp>=4.14.0
 # Prometheus bridge (optional)
 prometheus-client>=0.19.0
 
+# Rate limiting (optional – for API server)
+slowapi>=0.1.9
+
 # OpenTelemetry (optional – for distributed tracing)
 opentelemetry-api>=1.20.0
 opentelemetry-sdk>=1.20.0

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# pyright: reportUnknownVariableType=false, reportMissingTypeStubs=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
 """FastAPI server for AL-5G-AE.
 
 Endpoints:
@@ -14,14 +15,19 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hmac
+import os
+import secrets
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
+from starlette.responses import Response as StarletteResponse
 
 from al_5g_ae_core import (
     DEFAULT_DEVICE,
@@ -46,7 +52,75 @@ try:
 except ImportError:
     _otel_fastapi = False
 
-app = FastAPI(title="AL-5G-AE API", version="0.1")
+# --------------------------------------------------------------------------- #
+# Rate-limiter (slowapi – optional)
+# --------------------------------------------------------------------------- #
+try:
+    from slowapi import Limiter  # type: ignore[import-untyped]
+    from slowapi.util import get_remote_address  # type: ignore[import-untyped]
+    from slowapi.errors import RateLimitExceeded  # type: ignore[import-untyped]
+    _limiter: Any = Limiter(
+        key_func=get_remote_address,
+        default_limits=[os.environ.get("AL5GAE_RATE_LIMIT", "60/minute")],
+        storage_uri=os.environ.get("AL5GAE_RATE_LIMIT_STORAGE", "memory://"),
+    )
+    _slowapi_available = True
+except ImportError:
+    _limiter = None
+    _slowapi_available = False
+
+# --------------------------------------------------------------------------- #
+# API key authentication
+# --------------------------------------------------------------------------- #
+_api_keys: list[str] = []
+_auth_enabled = False
+
+
+def _init_api_keys() -> None:
+    """Load API keys from AL5GAE_API_KEYS (comma-separated) env var."""
+    global _api_keys, _auth_enabled
+    raw = os.environ.get("AL5GAE_API_KEYS", "").strip()
+    if raw:
+        _api_keys = [k.strip() for k in raw.split(",") if k.strip()]
+        _auth_enabled = True
+
+
+_init_api_keys()
+
+_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+async def _verify_api_key(
+    api_key: Optional[str] = Depends(_api_key_header),
+) -> Optional[str]:
+    """Validate the API key if authentication is enabled."""
+    if not _auth_enabled:
+        return None
+    if api_key is None:
+        raise HTTPException(status_code=401, detail="Missing API key")
+    # Constant-time comparison to prevent timing attacks
+    for valid_key in _api_keys:
+        if hmac.compare_digest(api_key, valid_key):
+            return api_key
+    raise HTTPException(status_code=403, detail="Invalid API key")
+
+
+# --------------------------------------------------------------------------- #
+# FastAPI application
+# --------------------------------------------------------------------------- #
+app = FastAPI(title="AL-5G-AE API", version="0.2")
+
+# Attach rate limiter
+if _slowapi_available and _limiter is not None:
+    app.state.limiter = _limiter  # type: ignore[union-attr]
+
+    async def _rate_limit_handler(request: Request, exc: Exception) -> StarletteResponse:
+        return JSONResponse(
+            status_code=429,
+            content={"error": "Rate limit exceeded", "detail": str(exc)},
+        )
+
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)  # type: ignore[arg-type]
 
 if _otel_fastapi:
     FastAPIInstrumentor.instrument_app(app)  # type: ignore[arg-type]
@@ -88,12 +162,15 @@ async def _ensure_backend_loaded(*, model_name: str, device: str, rag_dir: Optio
 
 @app.get("/health")
 async def health() -> Dict[str, object]:
+    """Health check — no auth required."""
     global _tokenizer, _model, _rag
     return {
         "status": "ok",
         "model_loaded": bool(_tokenizer is not None and _model is not None),
         "rag_loaded": bool(_rag is not None),
         "rag_chunks": len(_rag.chunks) if _rag else 0,
+        "auth_enabled": _auth_enabled,
+        "rate_limit_enabled": _slowapi_available,
     }
 
 
@@ -108,7 +185,10 @@ class QueryRequest(BaseModel):
 
 
 @app.post("/query")
-async def query(req: QueryRequest) -> Dict[str, object]:
+async def query(
+    req: QueryRequest,
+    _key: Optional[str] = Depends(_verify_api_key),
+) -> Dict[str, object]:
     await _ensure_backend_loaded(model_name=req.model, device=req.device, rag_dir=req.rag_dir)
 
     with QueryTimer("api", _tracer, "api_query"):
@@ -140,6 +220,7 @@ async def upload_log(
     rag_dir: Optional[str] = Form(None),
     model: str = Form(DEFAULT_MODEL),
     device: str = Form(DEFAULT_DEVICE),
+    _key: Optional[str] = Depends(_verify_api_key),
 ) -> Any:
     await _ensure_backend_loaded(model_name=model, device=device, rag_dir=rag_dir)
 
@@ -168,6 +249,7 @@ async def upload_pcap(
     pcap_filter: Optional[str] = Form(None),
     model: str = Form(DEFAULT_MODEL),
     device: str = Form(DEFAULT_DEVICE),
+    _key: Optional[str] = Depends(_verify_api_key),
 ) -> Any:
     await _ensure_backend_loaded(model_name=model, device=device, rag_dir=rag_dir)
 
@@ -213,7 +295,37 @@ def main() -> None:
     parser.add_argument("--device", default=DEFAULT_DEVICE, choices=["cpu", "cuda"])
     parser.add_argument("--rag-dir", default=None)
     parser.add_argument("--reload", action="store_true", help="Enable auto-reload (dev)")
+    parser.add_argument(
+        "--api-keys",
+        default=None,
+        help="Comma-separated API keys (overrides AL5GAE_API_KEYS env var)",
+    )
+    parser.add_argument(
+        "--generate-key",
+        action="store_true",
+        help="Generate a random API key and exit",
+    )
+    parser.add_argument(
+        "--rate-limit",
+        default=None,
+        help="Rate limit string, e.g. '60/minute' (overrides AL5GAE_RATE_LIMIT env var)",
+    )
     args = parser.parse_args()
+
+    # Key generation utility
+    if args.generate_key:
+        key = secrets.token_urlsafe(32)
+        print(f"Generated API key: {key}")
+        print("Set via:  export AL5GAE_API_KEYS=\"{key}\"")
+        print("Or pass:  --api-keys \"{key}\"")
+        return
+
+    # Override env-based config with CLI args
+    if args.api_keys:
+        os.environ["AL5GAE_API_KEYS"] = args.api_keys
+        _init_api_keys()
+    if args.rate_limit:
+        os.environ["AL5GAE_RATE_LIMIT"] = args.rate_limit
 
     # Preload the backend in a best-effort way (still lazy for RAG uploads).
     async def _warmup():
