@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "al-5g-ae.fullname" . }}-config
+  labels:
+    {{- include "al-5g-ae.labels" . | nindent 4 }}
+data:
+  AL5GAE_MODEL: {{ .Values.config.model | quote }}
+  AL5GAE_DEVICE: {{ .Values.config.device | quote }}
+  RAG_DIR: {{ .Values.config.ragDir | quote }}
+  AL5GAE_LOG_FORMAT: {{ .Values.config.logFormat | quote }}
+  {{- if .Values.rateLimit.enabled }}
+  AL5GAE_RATE_LIMIT: {{ .Values.rateLimit.limit | quote }}
+  AL5GAE_RATE_LIMIT_STORAGE: {{ .Values.rateLimit.storage | quote }}
+  {{- end }}
+  {{- if .Values.otel.enabled }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.otel.endpoint | quote }}
+  {{- end }}
+  {{- if .Values.components.prometheusBridge }}
+  BRIDGE_PORT: {{ .Values.prometheusBridge.port | quote }}
+  {{- if .Values.prometheusBridge.forwardWebhookUrl }}
+  FORWARD_WEBHOOK_URL: {{ .Values.prometheusBridge.forwardWebhookUrl | quote }}
+  {{- end }}
+  {{- end }}

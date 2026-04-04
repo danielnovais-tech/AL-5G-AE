@@ -18,14 +18,69 @@ uvicorn>=0.24.0
 python-multipart>=0.0.9
 scapy>=2.5.0
 
-# Real-time streaming (optional)
+# Real-time streaming
 websockets>=12.0
-# kafka-python>=2.0.2  # uncomment if using Kafka consumer
+kafka-python>=2.0.2            # Kafka consumer for logs & telemetry
 
 # Slack bot (optional)
 slack-bolt>=1.18.0
+
+# Microsoft Teams bot (optional)
+aiohttp>=3.9.0
+botbuilder-core>=4.14.0
+botbuilder-integration-aiohttp>=4.14.0
+
+# Prometheus bridge (optional)
+prometheus-client>=0.19.0
+
+# Rate limiting (optional – for API server)
+slowapi>=0.1.9
+
+# OpenTelemetry (optional – for distributed tracing)
+opentelemetry-api>=1.20.0
+opentelemetry-sdk>=1.20.0
+opentelemetry-exporter-otlp-proto-grpc>=1.20.0
+opentelemetry-instrumentation-fastapi>=0.41b0
+
+# Environment management
+python-dotenv>=1.0.0
 
 # Fine-tuning (optional – only needed for finetune.py)
 peft>=0.7.0
 datasets>=2.14.0
 # bitsandbytes>=0.41.0  # uncomment for 4-bit/8-bit quantised training
+
+# GGUF / llama.cpp backend (optional – for quantized CPU inference)
+# llama-cpp-python>=0.2.0  # uncomment to enable GGUF model serving
+
+# Hybrid search (optional – improves RAG recall with BM25 + vector fusion)
+rank-bm25>=0.2.2
+
+# Advanced RAG (optional)
+# Cross-encoder re-ranking (auto-enabled when installed)
+# (already included in sentence-transformers; no extra package needed)
+# Multi-modal RAG – CLIP image embeddings
+Pillow>=10.0.0
+# transformers already listed above provides CLIPModel/CLIPProcessor
+
+# Automated KB curation (optional)
+PyMuPDF>=1.23.0               # PDF text extraction
+requests>=2.31.0               # Confluence / SharePoint HTTP client
+msal>=1.24.0                   # SharePoint auth (Microsoft Graph)
+watchdog>=3.0.0                # Folder watcher for auto re-indexing
+
+# Real-time 5G Core integration (optional)
+pygnmi>=0.8.0                  # gNMI client (gRPC-based)
+grpcio>=1.60.0                 # gRPC transport for gNMI
+# kafka-python already listed above
+# requests already listed above
+
+# Advanced packet analysis (optional)
+pyshark>=0.6                   # pyshark (tshark Python wrapper) for full dissection
+
+# Collaboration & knowledge sharing (optional)
+fpdf2>=2.7.0                   # PDF export for conversation threads
+
+# Testing & validation
+pytest>=7.4.0
+psutil>=5.9.0                  # Memory benchmarks (optional)

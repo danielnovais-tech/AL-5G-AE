@@ -157,5 +157,122 @@ def main() -> None:
     print(f"\nDone. Load the adapter with:\n  model = PeftModel.from_pretrained(base_model, '{args.output_dir}')")
 
 
+# ---------------------------------------------------------------------------
+# Embedding model fine-tuning (sentence-transformers on 5G domain pairs)
+# ---------------------------------------------------------------------------
+
+def load_embedding_pairs(path: str) -> List[Dict[str, str]]:
+    """Load JSONL with 'query' and 'positive' fields for contrastive training.
+
+    Optionally also 'negative' for harder negatives.
+    Format:
+      {"query": "What is PFCP?", "positive": "PFCP (Packet Forwarding ...) ...", "negative": "..."}
+    """
+    pairs: List[Dict[str, str]] = []
+    with open(path, "r", encoding="utf-8") as fh:
+        for lineno, line in enumerate(fh, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError as exc:
+                logger.warning("Skipping line %d: %s", lineno, exc)
+                continue
+            if "query" not in obj or "positive" not in obj:
+                logger.warning("Skipping line %d: missing 'query' or 'positive'", lineno)
+                continue
+            pairs.append(obj)
+    logger.info("Loaded %d embedding training pairs from %s", len(pairs), path)
+    return pairs
+
+
+def finetune_embedding() -> None:
+    """Fine-tune a sentence-transformer embedding model on 5G domain pairs."""
+    parser = argparse.ArgumentParser(
+        description="Fine-tune a sentence-transformer for 5G RAG retrieval"
+    )
+    parser.add_argument("--dataset", required=True,
+                        help="JSONL file with 'query' and 'positive' (optionally 'negative') fields")
+    parser.add_argument("--model", default="all-MiniLM-L6-v2",
+                        help="Base sentence-transformer model")
+    parser.add_argument("--output-dir", default="./embedding_finetuned",
+                        help="Where to save the fine-tuned model")
+    parser.add_argument("--epochs", type=int, default=3)
+    parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--lr", type=float, default=2e-5)
+    parser.add_argument("--warmup-ratio", type=float, default=0.1)
+    args = parser.parse_args()
+
+    if not Path(args.dataset).exists():
+        logger.error("Dataset file not found: %s", args.dataset)
+        sys.exit(1)
+
+    pairs = load_embedding_pairs(args.dataset)
+    if len(pairs) < 2:
+        logger.error("Need at least 2 training pairs; got %d", len(pairs))
+        sys.exit(1)
+
+    # ---- Late imports ----
+    try:
+        from sentence_transformers import SentenceTransformer, InputExample, losses  # type: ignore[import-untyped]
+        from torch.utils.data import DataLoader  # type: ignore[import-untyped]
+    except ImportError as exc:
+        logger.error(
+            "Missing dependency: %s\n"
+            "Install with:  pip install sentence-transformers torch",
+            exc,
+        )
+        sys.exit(1)
+
+    logger.info("Loading base embedding model %s …", args.model)
+    st_model: Any = SentenceTransformer(args.model)
+
+    # Build training examples
+    has_negatives = all("negative" in p for p in pairs)
+    examples: List[Any] = []
+    for p in pairs:
+        if has_negatives:
+            examples.append(InputExample(texts=[p["query"], p["positive"], p["negative"]]))
+        else:
+            examples.append(InputExample(texts=[p["query"], p["positive"]]))
+
+    train_dataloader: Any = DataLoader(examples, shuffle=True, batch_size=args.batch_size)  # pyright: ignore[reportArgumentType]
+
+    # Choose loss
+    if has_negatives:
+        train_loss: Any = losses.TripletLoss(model=st_model)
+        logger.info("Using TripletLoss (query, positive, negative)")
+    else:
+        train_loss = losses.MultipleNegativesRankingLoss(model=st_model)
+        logger.info("Using MultipleNegativesRankingLoss (query, positive)")
+
+    warmup_steps = int(len(train_dataloader) * args.epochs * args.warmup_ratio)
+
+    logger.info(
+        "Starting embedding fine-tuning (%d epochs, batch size %d, lr %.1e) …",
+        args.epochs, args.batch_size, args.lr,
+    )
+    st_model.fit(
+        train_objectives=[(train_dataloader, train_loss)],
+        epochs=args.epochs,
+        warmup_steps=warmup_steps,
+        optimizer_params={"lr": args.lr},
+        output_path=args.output_dir,
+        show_progress_bar=True,
+    )
+
+    logger.info("Fine-tuned embedding model saved to %s", args.output_dir)
+    print(
+        f"\nDone. Use the fine-tuned model with:\n"
+        f"  RAG(embedding_model='{args.output_dir}')"
+    )
+
+
 if __name__ == "__main__":
-    main()
+    # Dispatch: if --embedding flag is present, run embedding fine-tuning
+    if "--embedding" in sys.argv:
+        sys.argv.remove("--embedding")
+        finetune_embedding()
+    else:
+        main()

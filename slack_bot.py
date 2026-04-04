@@ -65,14 +65,17 @@ def _ensure_rag() -> None:
 
 def _answer(question: str) -> str:
     from al_5g_ae_core import generate_response  # late import
+    from observability import get_tracer, QueryTimer, record_rag_retrieval
 
     _ensure_model()
     _ensure_rag()
-    context = _rag.retrieve(question, k=3) if _rag else None
-    return str(generate_response(_tokenizer, _model, question, context))
 
-
-# ---------- Slack handlers ----------
+    _tracer = get_tracer("slack_bot")
+    with QueryTimer("slack", _tracer, "slack_answer"):
+        context = _rag.retrieve(question, k=3) if _rag else None
+        if context:
+            record_rag_retrieval("slack")
+        return str(generate_response(_tokenizer, _model, question, context))
 
 def _build_app() -> Any:
     try:

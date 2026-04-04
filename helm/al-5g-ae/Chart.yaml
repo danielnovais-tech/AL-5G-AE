@@ -1,0 +1,17 @@
+apiVersion: v2
+name: al-5g-ae
+description: AL-5G-AE — AI-powered 5G Core operations assistant
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://github.com/danielnovais-tech/AL-5G-AE
+sources:
+  - https://github.com/danielnovais-tech/AL-5G-AE
+keywords:
+  - 5g
+  - ai
+  - telecom
+  - network-operations
+  - rag
+maintainers:
+  - name: AL-5G-AE Team

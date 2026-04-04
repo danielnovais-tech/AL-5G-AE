@@ -22,25 +22,322 @@ from al_5g_ae_core import (
 )
 from pcap_ingest import process_pcap, summaries_to_text
 
+# ---------------------------------------------------------------------------
 # JS polyfill injected into every Gradio page to suppress the
-# "Dft.clearMarks is not a function" console error.  The error is
-# caused by React DevTools (or similar extensions) monkey-patching
-# performance timing APIs.  This snippet ensures the required
-# methods always exist.
+# "Dft.clearMarks is not a function" console error.
+# ---------------------------------------------------------------------------
 _DFT_CLEARMARKS_POLYFILL = """
 () => {
-  // Ensure performance.clearMarks is always callable.
   if (typeof performance !== 'undefined' && typeof performance.clearMarks !== 'function') {
     performance.clearMarks = function() {};
   }
-  // Patch the Dft global if it exists (React DevTools internals).
   if (typeof window.Dft !== 'undefined' && typeof window.Dft.clearMarks !== 'function') {
     window.Dft.clearMarks = function() {};
   }
-  // Proactively define Dft.clearMarks even if Dft doesn't exist yet,
-  // in case it gets created later by an extension.
   if (typeof window.Dft === 'undefined') {
     window.Dft = { clearMarks: function() {} };
+  }
+}
+"""
+
+# ---------------------------------------------------------------------------
+# Dark mode + responsive CSS
+# ---------------------------------------------------------------------------
+_CUSTOM_CSS = """
+/* ── CSS custom properties for light / dark themes ── */
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f7f8fa;
+  --bg-chat: #ffffff;
+  --text-primary: #1a1a2e;
+  --text-secondary: #555;
+  --border-color: #e0e0e0;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --shadow: 0 2px 8px rgba(0,0,0,0.08);
+  --btn-bg: #f0f0f0;
+  --btn-text: #333;
+  --input-bg: #fff;
+  --code-bg: #f5f5f5;
+}
+
+[data-theme="dark"] {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-chat: #1e293b;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --border-color: #334155;
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
+  --shadow: 0 2px 8px rgba(0,0,0,0.3);
+  --btn-bg: #334155;
+  --btn-text: #e2e8f0;
+  --input-bg: #1e293b;
+  --code-bg: #0f172a;
+}
+
+/* ── Apply theme variables ── */
+body, .gradio-container {
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+.gradio-container .prose, .gradio-container .markdown {
+  color: var(--text-primary) !important;
+}
+.gradio-container input, .gradio-container textarea {
+  background: var(--input-bg) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
+}
+.gradio-container .chatbot {
+  background: var(--bg-chat) !important;
+}
+.gradio-container .message {
+  color: var(--text-primary) !important;
+}
+.gradio-container code, .gradio-container pre {
+  background: var(--code-bg) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ── Dark mode toggle button ── */
+#al5gae-theme-toggle {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 10000;
+  background: var(--btn-bg);
+  color: var(--btn-text);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 14px;
+  box-shadow: var(--shadow);
+  transition: all 0.2s ease;
+}
+#al5gae-theme-toggle:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* ── Voice input button ── */
+#al5gae-voice-btn {
+  position: fixed;
+  bottom: 80px;
+  right: 16px;
+  z-index: 10000;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-size: 22px;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+#al5gae-voice-btn:hover {
+  background: var(--accent-hover);
+  transform: scale(1.1);
+}
+#al5gae-voice-btn.recording {
+  background: #ef4444;
+  animation: pulse-ring 1.2s ease-out infinite;
+}
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(239,68,68,0.5); }
+  100% { box-shadow: 0 0 0 14px rgba(239,68,68,0); }
+}
+#al5gae-voice-status {
+  position: fixed;
+  bottom: 136px;
+  right: 16px;
+  z-index: 10000;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  display: none;
+  box-shadow: var(--shadow);
+}
+
+/* ── Mobile responsive ── */
+@media (max-width: 768px) {
+  .gradio-container {
+    padding: 8px !important;
+  }
+  .gradio-container .prose h1 {
+    font-size: 1.3rem !important;
+  }
+  .gradio-container .chatbot {
+    height: 55vh !important;
+    min-height: 200px !important;
+  }
+  .gradio-container input[type="text"],
+  .gradio-container textarea {
+    font-size: 16px !important;  /* prevents iOS zoom */
+  }
+  .gradio-container .form {
+    gap: 6px !important;
+  }
+  .gradio-container button {
+    padding: 10px 16px !important;
+    font-size: 14px !important;
+  }
+  #al5gae-theme-toggle {
+    top: 8px;
+    right: 8px;
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+  #al5gae-voice-btn {
+    bottom: 70px;
+    right: 10px;
+    width: 42px;
+    height: 42px;
+    font-size: 18px;
+  }
+  #al5gae-voice-status {
+    bottom: 120px;
+    right: 10px;
+  }
+}
+@media (max-width: 480px) {
+  .gradio-container .chatbot {
+    height: 50vh !important;
+  }
+  .gradio-container .prose h1 {
+    font-size: 1.1rem !important;
+  }
+}
+/* Ensure touch-friendly tap targets */
+@media (pointer: coarse) {
+  .gradio-container button,
+  .gradio-container input[type="submit"] {
+    min-height: 44px !important;
+    min-width: 44px !important;
+  }
+}
+"""
+
+# ---------------------------------------------------------------------------
+# Dark mode toggle + voice input JS
+# ---------------------------------------------------------------------------
+_UX_ENHANCEMENTS_JS = """
+() => {
+  /* ── Dark mode toggle ── */
+  const saved = localStorage.getItem('al5gae-theme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const initial = saved || (prefersDark ? 'dark' : 'light');
+  document.documentElement.setAttribute('data-theme', initial);
+
+  if (!document.getElementById('al5gae-theme-toggle')) {
+    const btn = document.createElement('button');
+    btn.id = 'al5gae-theme-toggle';
+    btn.textContent = initial === 'dark' ? '☀️ Light' : '🌙 Dark';
+    btn.addEventListener('click', () => {
+      const cur = document.documentElement.getAttribute('data-theme');
+      const next = cur === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('al5gae-theme', next);
+      btn.textContent = next === 'dark' ? '☀️ Light' : '🌙 Dark';
+    });
+    document.body.appendChild(btn);
+  }
+
+  /* ── Voice input (Web Speech API) ── */
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SpeechRecognition && !document.getElementById('al5gae-voice-btn')) {
+    const voiceBtn = document.createElement('button');
+    voiceBtn.id = 'al5gae-voice-btn';
+    voiceBtn.innerHTML = '🎙';
+    voiceBtn.title = 'Voice input (click to speak)';
+
+    const status = document.createElement('div');
+    status.id = 'al5gae-voice-status';
+    status.textContent = 'Listening...';
+
+    document.body.appendChild(voiceBtn);
+    document.body.appendChild(status);
+
+    let recognition = null;
+    let isRecording = false;
+
+    function findTextInput() {
+      return document.querySelector('.gradio-container textarea')
+          || document.querySelector('.gradio-container input[type="text"]');
+    }
+
+    function startRecognition() {
+      recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = navigator.language || 'en-US';
+
+      recognition.onstart = () => {
+        isRecording = true;
+        voiceBtn.classList.add('recording');
+        status.style.display = 'block';
+        status.textContent = 'Listening...';
+      };
+
+      recognition.onresult = (event) => {
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        const input = findTextInput();
+        if (input) {
+          const nativeSetter = Object.getOwnPropertyDescriptor(
+            window.HTMLTextAreaElement.prototype, 'value'
+          )?.set || Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype, 'value'
+          )?.set;
+          if (nativeSetter) {
+            nativeSetter.call(input, transcript);
+          } else {
+            input.value = transcript;
+          }
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        if (event.results[event.results.length - 1].isFinal) {
+          status.textContent = 'Done!';
+        } else {
+          status.textContent = 'Listening: ' + transcript.slice(0, 40) + '...';
+        }
+      };
+
+      recognition.onerror = (event) => {
+        status.textContent = 'Error: ' + event.error;
+        setTimeout(() => { status.style.display = 'none'; }, 2000);
+        isRecording = false;
+        voiceBtn.classList.remove('recording');
+      };
+
+      recognition.onend = () => {
+        isRecording = false;
+        voiceBtn.classList.remove('recording');
+        setTimeout(() => { status.style.display = 'none'; }, 1500);
+      };
+
+      recognition.start();
+    }
+
+    voiceBtn.addEventListener('click', () => {
+      if (isRecording && recognition) {
+        recognition.stop();
+      } else {
+        startRecognition();
+      }
+    });
   }
 }
 """
@@ -82,6 +379,14 @@ def create_ui(
     if rag_dir:
         logger.info("rag_dir=%s", rag_dir)
 
+    # Combined JS: polyfill + dark mode toggle + voice input
+    _combined_js = (
+        "() => {\n"
+        "  (" + _DFT_CLEARMARKS_POLYFILL.strip() + ")();\n"
+        "  (" + _UX_ENHANCEMENTS_JS.strip() + ")();\n"
+        "}"
+    )
+
     # Minimal UI is meant to isolate frontend/browser issues.
     # Keep it model-free so it starts instantly.
     if minimal_ui:
@@ -91,7 +396,8 @@ def create_ui(
             outputs=gr.Textbox(label="Answer"),
             title="AL-5G-AE",
             description="Minimal UI mode (no model load) to isolate browser-side JS issues.",
-            js=_DFT_CLEARMARKS_POLYFILL,
+            css=_CUSTOM_CSS,
+            js=_combined_js,
         )
 
         return demo
@@ -141,17 +447,18 @@ def create_ui(
     # Prefer ChatInterface when available (less custom wiring, generally more stable).
     chat_interface = getattr(gr, "ChatInterface", None)
     if chat_interface is not None:
-        # Some Gradio versions/stubs don't accept theme= here.
-        # Inject JS polyfill to suppress Dft.clearMarks browser errors.
         ci_kwargs: dict[str, Any] = dict(fn=respond, title=title, description=description)
-        if "js" in set(inspect.signature(chat_interface).parameters.keys()):
-            ci_kwargs["js"] = _DFT_CLEARMARKS_POLYFILL
+        ci_sig_params = set(inspect.signature(chat_interface).parameters.keys())
+        if "js" in ci_sig_params:
+            ci_kwargs["js"] = _combined_js
+        if "css" in ci_sig_params:
+            ci_kwargs["css"] = _CUSTOM_CSS
         demo = gr.ChatInterface(**ci_kwargs)
     else:
         themes_mod = getattr(gr, "themes", None)
         theme_obj = themes_mod.Soft() if themes_mod is not None else None
 
-        with gr.Blocks(title=title, theme=theme_obj, js=_DFT_CLEARMARKS_POLYFILL) as demo:
+        with gr.Blocks(title=title, theme=theme_obj, css=_CUSTOM_CSS, js=_combined_js) as demo:
             gr.Markdown("# AL-5G-AE – 5G Core Specialist Copilot")
             gr.Markdown(description)
 

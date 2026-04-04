@@ -1,0 +1,252 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "al-5g-ae.fullname" . }}
+  labels:
+    {{- include "al-5g-ae.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "al-5g-ae.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "al-5g-ae.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "al-5g-ae.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        # ── API server ────────────────────────────────────────────────
+        {{- if .Values.components.api }}
+        - name: api
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "api_server.py"]
+          args:
+            - "--host=0.0.0.0"
+            - "--port={{ .Values.api.port }}"
+            - "--rag-dir={{ .Values.config.ragDir }}"
+          envFrom:
+            - configMapRef:
+                name: {{ include "al-5g-ae.fullname" . }}-config
+          env:
+            {{- if .Values.auth.enabled }}
+            - name: AL5GAE_API_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ default (printf "%s-api-keys" (include "al-5g-ae.fullname" .)) .Values.auth.existingSecret }}
+                  key: api-keys
+            {{- end }}
+          ports:
+            - name: api
+              containerPort: {{ .Values.api.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: api
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: api
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+        {{- end }}
+
+        # ── Web UI ────────────────────────────────────────────────────
+        {{- if .Values.components.webui }}
+        - name: webui
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "web_ui.py"]
+          args:
+            - "--host=0.0.0.0"
+            - "--port={{ .Values.webui.port }}"
+            - "--rag-dir={{ .Values.config.ragDir }}"
+          envFrom:
+            - configMapRef:
+                name: {{ include "al-5g-ae.fullname" . }}-config
+          ports:
+            - name: webui
+              containerPort: {{ .Values.webui.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: webui
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+        {{- end }}
+
+        # ── Slack bot ─────────────────────────────────────────────────
+        {{- if .Values.components.slackBot }}
+        - name: slack-bot
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "slack_bot.py"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "al-5g-ae.fullname" . }}-config
+          env:
+            - name: SLACK_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ default (printf "%s-slack" (include "al-5g-ae.fullname" .)) .Values.slack.existingSecret }}
+                  key: bot-token
+            - name: SLACK_APP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ default (printf "%s-slack" (include "al-5g-ae.fullname" .)) .Values.slack.existingSecret }}
+                  key: app-token
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+        {{- end }}
+
+        # ── Teams bot ─────────────────────────────────────────────────
+        {{- if .Values.components.teamsBot }}
+        - name: teams-bot
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "teams_bot.py"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "al-5g-ae.fullname" . }}-config
+          env:
+            - name: MICROSOFT_APP_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ default (printf "%s-teams" (include "al-5g-ae.fullname" .)) .Values.teams.existingSecret }}
+                  key: app-id
+            - name: MICROSOFT_APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ default (printf "%s-teams" (include "al-5g-ae.fullname" .)) .Values.teams.existingSecret }}
+                  key: app-password
+          ports:
+            - name: teams
+              containerPort: {{ .Values.teams.port }}
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+        {{- end }}
+
+        # ── Prometheus bridge ─────────────────────────────────────────
+        {{- if .Values.components.prometheusBridge }}
+        - name: prometheus-bridge
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "prometheus_bridge.py"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "al-5g-ae.fullname" . }}-config
+          ports:
+            - name: prom-bridge
+              containerPort: {{ .Values.prometheusBridge.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: prom-bridge
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+        {{- end }}
+
+        # ── WebSocket streaming ───────────────────────────────────────
+        {{- if .Values.components.streamIngest }}
+        - name: stream-ingest
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "stream_ingest.py"]
+          args:
+            - "--rag-dir={{ .Values.config.ragDir }}"
+            - "--port={{ .Values.streamIngest.port }}"
+          envFrom:
+            - configMapRef:
+                name: {{ include "al-5g-ae.fullname" . }}-config
+          ports:
+            - name: ws
+              containerPort: {{ .Values.streamIngest.port }}
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+        {{- end }}
+
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "al-5g-ae.fullname" . }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

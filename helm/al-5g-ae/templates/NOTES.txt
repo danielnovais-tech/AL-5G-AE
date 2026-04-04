@@ -1,0 +1,39 @@
+AL-5G-AE has been deployed!
+
+{{- if .Values.components.api }}
+
+== API Server ==
+  kubectl port-forward svc/{{ include "al-5g-ae.fullname" . }}-api {{ .Values.api.service.port }}:{{ .Values.api.service.port }}
+  curl http://localhost:{{ .Values.api.service.port }}/health
+{{- end }}
+
+{{- if .Values.components.webui }}
+
+== Web UI ==
+  kubectl port-forward svc/{{ include "al-5g-ae.fullname" . }}-webui {{ .Values.webui.service.port }}:{{ .Values.webui.service.port }}
+  Open http://localhost:{{ .Values.webui.service.port }}
+{{- end }}
+
+{{- if .Values.components.prometheusBridge }}
+
+== Prometheus Bridge ==
+  kubectl port-forward svc/{{ include "al-5g-ae.fullname" . }}-prometheus {{ .Values.prometheusBridge.service.port }}:{{ .Values.prometheusBridge.service.port }}
+  Metrics: http://localhost:{{ .Values.prometheusBridge.service.port }}/metrics
+  Webhook: http://localhost:{{ .Values.prometheusBridge.service.port }}/webhook
+{{- end }}
+
+{{- if .Values.ingress.enabled }}
+
+== Ingress ==
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- end }}
+
+{{- if .Values.auth.enabled }}
+
+== Authentication ==
+  API key auth is ENABLED. Include header: X-API-Key: <your-key>
+{{- end }}
+
+Run `helm test {{ .Release.Name }}` to verify the deployment.
